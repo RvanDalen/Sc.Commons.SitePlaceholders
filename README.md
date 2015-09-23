@@ -1,7 +1,7 @@
 # Sc.Commons.SitePlaceholders
  Be able to create site specific placeholdersettings by prefixing the keys with the site name.
 
-# Example
+## Example
 We have 2 placeholder settings with these keys:
 - `corporate-body`
 - `body`
