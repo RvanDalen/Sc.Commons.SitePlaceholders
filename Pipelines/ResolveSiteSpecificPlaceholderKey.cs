@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -8,7 +9,6 @@ using Sitecore.Data.Items;
 using Sitecore.Diagnostics;
 using Sitecore.Pipelines.GetPlaceholderRenderings;
 using Sitecore.Sites;
-using Sitecore.Web;
 
 namespace Sc.Commons.SitePlaceholders.Pipelines
 {
@@ -30,11 +30,11 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
                 placeholderKey = match.Groups[1].Value;
 
             //get current item's sitename and compile a site specific placeholderKey
-            var siteName = GetSiteName();
+            var siteName = GetSiteName(args);
             if (string.IsNullOrEmpty(siteName)) return;
 
             var placeholderKeySegments = placeholderKey.Split('/');
-            placeholderKeySegments[placeholderKeySegments.Count() - 1] = $"{siteName}-{placeholderKeySegments[placeholderKeySegments.Count() - 1]}";
+            placeholderKeySegments[placeholderKeySegments.Count() - 1] = string.Format("{0}-{1}", siteName, placeholderKeySegments[placeholderKeySegments.Count() - 1]);
             var siteSpecificPlaceholderKey = string.Join("/", placeholderKeySegments);
 
             //try to resolve the specific placeholderKey
@@ -57,28 +57,28 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
             if (placeholderItem != null)
             {
                 var placeholderKeyField = typeof (GetPlaceholderRenderingsArgs).GetField("placeholderKey", BindingFlags.Instance | BindingFlags.NonPublic);
-                placeholderKeyField?.SetValue(args, siteSpecificPlaceholderKey);
+                if (placeholderKeyField != null) placeholderKeyField.SetValue(args, siteSpecificPlaceholderKey);
                 //args.PlaceholderKey = siteSpecificPlaceholderKey;
             }
         }
 
-        private string GetSiteName()
+        private string GetSiteName(GetPlaceholderRenderingsArgs args)
         {
             //get the id from the querystring
             var queryString = HttpContext.Current.Request.QueryString;
-            var itemId = queryString["id"];
+            var itemId = queryString["sc_itemId"] ?? queryString["id"];
             string siteName = null;
 
             if (!string.IsNullOrEmpty(itemId))
             {
                 //get the sitecore item, which is the context item of the page in the xEditor
-                var pageItem = Client.ContentDatabase.GetItem(itemId);
+                var pageItem = args.ContentDatabase.GetItem(itemId); 
                 if (pageItem != null)
                 {
                     //match it with a content site
                     foreach (var info in SiteContextFactory.Sites.Where(info => !string.IsNullOrEmpty(info.RootPath) && (info.RootPath != "/sitecore/content" || info.Name.Equals("website"))))
                     {
-                        if (pageItem.Paths.FullPath.StartsWith(info.RootPath))
+                        if (pageItem.Paths.FullPath.StartsWith(info.RootPath, StringComparison.OrdinalIgnoreCase))
                         {
                             siteName = info.Name.ToLowerInvariant();
                             break;
