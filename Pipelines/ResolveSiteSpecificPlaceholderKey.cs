@@ -15,8 +15,8 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
     [UsedImplicitly]
     public class ResolveSiteSpecificPlaceholderKey
     {
-        //copied from Sitecore.Support.Pipelines.GetPlaceholderRenderings.GetDynamicKeyAllowedRenderings
-        private readonly Regex _regex = new Regex("(.+)_[\\d\\w]{8}\\-([\\d\\w]{4}\\-){3}[\\d\\w]{12}");
+        //copied and modified from Sitecore.Support.Pipelines.GetPlaceholderRenderings.GetDynamicKeyAllowedRenderings
+        private readonly Regex _regex = new Regex("(.+)(_[\\d\\w]{8}\\-([\\d\\w]{4}\\-){3}[\\d\\w]{12})");
 
         [UsedImplicitly]
         public void Process(GetPlaceholderRenderingsArgs args)
@@ -26,8 +26,8 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
 
             //filter out the guid if its a dynamically generated placeholder
             var match = _regex.Match(placeholderKey);
-            if (match.Success && match.Groups.Count > 0)
-                placeholderKey = match.Groups[1].Value;
+            var isDynamicPlaceholder = match.Success && match.Groups.Count > 0;
+            if (isDynamicPlaceholder) placeholderKey = match.Groups[1].Value;
 
             //get current item's sitename and compile a site specific placeholderKey
             var siteName = GetSiteName(args);
@@ -56,6 +56,9 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
             //unfortunately the args.PlaceholderKey has no setter so for now this is fixed with some casual Reflection hacking
             if (placeholderItem != null)
             {
+                //re-add the dynamic part because it ensures business as usual (ie. the support package expects it)
+                if (isDynamicPlaceholder) siteSpecificPlaceholderKey = string.Format("{0}{1}", siteSpecificPlaceholderKey, match.Groups[2].Value);
+
                 var placeholderKeyField = typeof (GetPlaceholderRenderingsArgs).GetField("placeholderKey", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (placeholderKeyField != null) placeholderKeyField.SetValue(args, siteSpecificPlaceholderKey);
                 //args.PlaceholderKey = siteSpecificPlaceholderKey;
@@ -67,27 +70,32 @@ namespace Sc.Commons.SitePlaceholders.Pipelines
             //get the id from the querystring
             var queryString = HttpContext.Current.Request.QueryString;
             var itemId = queryString["sc_itemId"] ?? queryString["id"];
-            string siteName = null;
+            var siteName = Context.GetSiteName();
 
             if (!string.IsNullOrEmpty(itemId))
             {
                 //get the sitecore item, which is the context item of the page in the xEditor
-                var pageItem = args.ContentDatabase.GetItem(itemId); 
+                var pageItem = args.ContentDatabase.GetItem(itemId);
                 if (pageItem != null)
                 {
                     //match it with a content site
-                    foreach (var info in SiteContextFactory.Sites.Where(info => !string.IsNullOrEmpty(info.RootPath) && (info.RootPath != "/sitecore/content" || info.Name.Equals("website"))))
+                    foreach (
+                        var info in
+                            SiteContextFactory.Sites.Where(
+                                info =>
+                                    !string.IsNullOrEmpty(info.RootPath) &&
+                                    (info.RootPath != "/sitecore/content" || info.Name.Equals("website"))))
                     {
                         if (pageItem.Paths.FullPath.StartsWith(info.RootPath, StringComparison.OrdinalIgnoreCase))
                         {
-                            siteName = info.Name.ToLowerInvariant();
+                            siteName = info.Name;
                             break;
                         }
                     }
                 }
             }
 
-            return siteName;
+            return siteName.ToLowerInvariant();
         }
     }
 }
